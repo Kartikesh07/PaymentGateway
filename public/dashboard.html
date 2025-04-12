@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Merchant Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .full-width {
+      grid-column: 1 / -1;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #f8f9fa;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+    .stat-card {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #6851ff;
+    }
+    button {
+      background-color: #6851ff;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:disabled {
+      background-color: #cccccc;
+    }
+  </style>
+</head>
+<body>
+  <h1>Merchant Dashboard</h1>
+  
+  <div class="dashboard-grid">
+    <div class="card full-width">
+      <div class="stats">
+        <div class="stat-card">
+          <h3>Wallet Address</h3>
+          <div class="stat-value" id="walletAddress" style="font-size: 16px;"></div>
+        </div>
+        <div class="stat-card">
+          <h3>Total Received</h3>
+          <div class="stat-value" id="totalReceived">0</div>
+          <small>MATIC</small>
+        </div>
+        <div class="stat-card">
+          <h3>Registration Date</h3>
+          <div class="stat-value" id="registrationTime" style="font-size: 16px;">Not registered</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Payment Analytics</h2>
+      <canvas id="paymentChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Daily Transactions</h2>
+      <canvas id="transactionChart"></canvas>
+    </div>
+
+    <div class="card full-width">
+      <h2>Transaction History</h2>
+      <table id="transactionTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>From</th>
+            <th>Amount (MATIC)</th>
+            <th>Transaction Hash</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <button onclick="loadDashboard()">Refresh Dashboard</button>
+  <button onclick="registerAsMerchant()">Register as Merchant</button>
+  <button onclick="withdrawFunds()">Withdraw Funds</button>
+
+  <script>
+    const contractAddress = "0xA31C0e25409EC88fdBcFeb9A5E92E19aEcf4b5cC";
+    const contractABI = [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "merchant",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "registrationTime",
+          "type": "uint256"
+        }
+      ],
+      "name": "MerchantRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "merchant",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "PaymentReceived",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "merchants",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "merchantAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "registrationTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalReceived",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "merchant",
+          "type": "address"
+        }
+      ],
+      "name": "payMerchant",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "registerMerchant",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "withdrawFunds",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ];
+
+    async function registerAsMerchant() {
+      if (!window.ethereum) {
+        return alert("Please install MetaMask");
+      }
+
+      try {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+        const tx = await contract.registerMerchant();
+        console.log("Registration transaction sent:", tx.hash);
+        
+        // Wait for transaction confirmation
+        await tx.wait();
+        alert("Registration successful! Please reload the dashboard.");
+        
+        // Reload dashboard data
+        await loadDashboard();
+      } catch (error) {
+        console.error("Registration failed:", error);
+        alert(error.reason || "Registration failed. Please try again.");
+      }
+    }
+
+    let paymentChart;
+    let transactionChart;
+
+    function initializeCharts() {
+      // Payment Analytics Chart
+      const paymentCtx = document.getElementById('paymentChart').getContext('2d');
+      paymentChart = new Chart(paymentCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Payment Volume',
+            data: [],
+            borderColor: '#6851ff',
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+
+      // Daily Transactions Chart
+      const transactionCtx = document.getElementById('transactionChart').getContext('2d');
+      transactionChart = new Chart(transactionCtx, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Daily Transactions',
+            data: [],
+            backgroundColor: '#6851ff'
+          }]
+        },
+        options: {
+          responsive: true
+        }
+      });
+    }
+
+    async function loadTransactionHistory(contract, address) {
+      try {
+        // Create a new contract instance with the provider
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        contract = new ethers.Contract(contractAddress, contractABI, provider);
+        
+        // Get current block number
+        const currentBlock = await provider.getBlockNumber();
+        // Query from genesis block (0) to include all transactions
+        const fromBlock = 0;
+        
+        // Create filter for PaymentReceived events
+        const filter = {
+          address: contract.target,
+          topics: [
+            ethers.id("PaymentReceived(address,address,uint256)"),
+            ethers.zeroPadValue(address, 32)
+          ],
+          fromBlock: fromBlock,
+          toBlock: currentBlock
+        };
+
+        const logs = await provider.getLogs(filter);
+        const tbody = document.querySelector('#transactionTable tbody');
+        tbody.innerHTML = '';
+
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No transactions found</td></tr>';
+          // Clear charts
+          paymentChart.data.labels = [];
+          paymentChart.data.datasets[0].data = [];
+          paymentChart.update();
+          transactionChart.data.labels = [];
+          transactionChart.data.datasets[0].data = [];
+          transactionChart.update();
+          return;
+        }
+
+        const paymentData = new Map();
+        const transactionData = new Map();
+
+        // Process logs in reverse order (newest first)
+        for (const log of logs.reverse()) {
+          try {
+            const parsedLog = contract.interface.parseLog({
+              topics: log.topics,
+              data: log.data
+            });
+            
+            const block = await provider.getBlock(log.blockNumber);
+            const amount = ethers.formatEther(parsedLog.args.amount);
+            const date = new Date(Number(block.timestamp) * 1000);
+            const dateStr = date.toLocaleDateString();
+            
+            // Update charts data
+            const currentAmount = paymentData.get(dateStr) || 0;
+            const currentCount = transactionData.get(dateStr) || 0;
+            
+            paymentData.set(dateStr, currentAmount + Number(amount));
+            transactionData.set(dateStr, currentCount + 1);
+
+            // Add table row
+            const row = tbody.insertRow();
+            row.innerHTML = `
+              <td>${date.toLocaleString()}</td>
+              <td>${parsedLog.args.sender}</td>
+              <td>${Number(amount).toFixed(6)}</td>
+              <td><a href="https://www.oklink.com/amoy/tx/${log.transactionHash}" target="_blank">${log.transactionHash.slice(0, 10)}...</a></td>
+            `;
+          } catch (error) {
+            console.error('Error processing log:', error);
+          }
+        }
+
+        // Sort dates for charts
+        const sortedDates = [...paymentData.keys()].sort((a, b) => 
+          new Date(a) - new Date(b)
+        );
+
+        // Update charts with sorted data
+        paymentChart.data.labels = sortedDates;
+        paymentChart.data.datasets[0].data = sortedDates.map(date => paymentData.get(date));
+        paymentChart.update();
+
+        transactionChart.data.labels = sortedDates;
+        transactionChart.data.datasets[0].data = sortedDates.map(date => transactionData.get(date));
+        transactionChart.update();
+
+      } catch (error) {
+        console.error('Error loading transaction history:', error);
+        const tbody = document.querySelector('#transactionTable tbody');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Error loading transactions</td></tr>';
+      }
+    }
+
+    function updateCharts(paymentData, transactionData) {
+      const dates = [...paymentData.keys()].sort();
+
+      paymentChart.data.labels = dates;
+      paymentChart.data.datasets[0].data = dates.map(date => paymentData.get(date));
+      paymentChart.update();
+
+      transactionChart.data.labels = dates;
+      transactionChart.data.datasets[0].data = dates.map(date => transactionData.get(date));
+      transactionChart.update();
+    }
+
+    async function loadDashboard() {
+      if (!window.ethereum) {
+        return alert("Please install MetaMask");
+      }
+
+      try {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const userAddress = await signer.getAddress();
+        document.getElementById("walletAddress").innerText = userAddress;
+
+        const contract = new ethers.Contract(contractAddress, contractABI, provider);
+        const merchantData = await contract.merchants(userAddress);
+
+        if (merchantData.merchantAddress === ethers.ZeroAddress) {
+          document.getElementById("registrationTime").innerText = "Not registered";
+          document.getElementById("totalReceived").innerText = "0";
+        } else {
+          const regTime = new Date(Number(merchantData.registrationTime) * 1000).toLocaleString();
+          document.getElementById("registrationTime").innerText = regTime;
+          document.getElementById("totalReceived").innerText = 
+            ethers.formatEther(merchantData.totalReceived);
+          
+          // Load transaction history and update charts
+          await loadTransactionHistory(contract, userAddress);
+        }
+      } catch (error) {
+        console.error("Error loading dashboard:", error);
+      }
+    }
+
+    // Initialize charts when page loads
+    initializeCharts();
+    loadDashboard();
+
+    async function withdrawFunds() {
+      if (!window.ethereum) {
+        return alert("Please install MetaMask");
+      }
+
+      try {
+        // Switch to Polygon Amoy testnet
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x13882' }],
+          });
+        } catch (switchError) {
+          if (switchError.code === 4902) {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: '0x13882',
+                chainName: 'Polygon Amoy Testnet',
+                nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+                rpcUrls: ['https://rpc-amoy.polygon.technology/'],
+                blockExplorerUrls: ['https://www.oklink.com/amoy']
+              }]
+            });
+          }
+        }
+
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+        // Check if user is registered and has funds
+        const merchantData = await contract.merchants(await signer.getAddress());
+        if (merchantData.merchantAddress === ethers.ZeroAddress) {
+          throw new Error("Not registered as merchant");
+        }
+        if (merchantData.totalReceived <= 0) {
+          throw new Error("No funds to withdraw");
+        }
+
+        // Get current gas price and add 20% buffer
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice * BigInt(120) / BigInt(100);
+
+        const tx = await contract.withdrawFunds({
+          gasLimit: 100000, // Set fixed gas limit
+          gasPrice: gasPrice
+        });
+        
+        console.log("Withdrawal transaction sent:", tx.hash);
+        await tx.wait();
+        alert("Withdrawal successful!");
+        await loadDashboard();
+      } catch (error) {
+        console.error("Withdrawal failed:", error);
+        if (error.message.includes("Not registered")) {
+          alert("You are not registered as a merchant");
+        } else if (error.message.includes("No funds")) {
+          alert("You don't have any funds to withdraw");
+        } else {
+          alert(`Withdrawal failed: ${error.message}`);
+        }
+      }
+    }
+  </script>
+</body>
+</html>

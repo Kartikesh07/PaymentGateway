@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Crypto Payment Gateway Integration</title>
+</head>
+<body>
+  <!-- Demo payment button -->
+  <button id="cryptoPayButton" 
+          data-merchant-address="0xD9A6e4718919BCE695FC0Cd984b7f28B08d044D3"
+          data-payment-amount-usd="0.001">
+    Pay $0.001 (Test Mode)
+  </button>
+
+  <!-- Merchant Integration Guide:
+    1. Include the payment gateway script
+    2. Add a button with:
+       - id="cryptoPayButton" (or any custom ID)
+       - data-merchant-address="YOUR_WALLET_ADDRESS"
+       - data-payment-amount-usd="AMOUNT_IN_USD"
+    3. Initialize the payment gateway
+  -->
+
+  <!-- Step 1: Include required scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <script src="./crypto-pay.js"></script>
+
+  <!-- Step 2: Initialize payment gateway -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize with custom configuration (optional)
+      CryptoPaymentGateway.init({
+        buttonId: 'cryptoPayButton', // Default: 'cryptoPayButton'
+        testMode: true, // Default: true (uses Amoy testnet)
+        onSuccess: (transaction) => {
+          console.log('Payment successful:', transaction);
+          // Add your success handling code here
+        },
+        onError: (error) => {
+          console.error('Payment failed:', error);
+          // Add your error handling code here
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>
